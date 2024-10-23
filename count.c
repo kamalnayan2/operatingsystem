@@ -1,90 +1,114 @@
-// Q5(1 )
-// Write a program to implement the toy shell. It should display the command
-// prompt “myshell$”. Tokenize the command line and execute the given
-// command by creating the child process. Additionally it should interpret the
-// following commands.
-// count c filename :- To print number of characters in the file.
-// count w filename :- To print number of words in the file.
-// count l filename :- To print number of lines in the file.
-// character count length,word,line
+#include <stdio.h>      // Standard input/output library
+#include <stdlib.h>     // Standard library for memory allocation and process control
+#include <string.h>     // String handling functions
+#include <unistd.h>     // POSIX operating system API
+#include <sys/types.h>  // Data types used in system calls
+#include <sys/wait.h>   // Macros related to process termination
 
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-// Function to tokenize the command line input
-void make_toks(char *s, char *tok[]) {
-    int i = 0;
-    char *p;
-    p = strtok(s, " "); // split the input string into tokens separated by spaces
-    while (p != NULL) {
-        tok[i++] = p;
-        p = strtok(NULL, " ");
+// Function to count characters in a file
+void count_characters(const char *filename) {
+    // Open the file for reading
+    FILE *file = fopen(filename, "r");
+    if (!file) {  // Check if the file opened successfully
+        perror("Could not open file");  // Print error message if it fails
+        return;  // Exit the function
     }
-    tok[i] = NULL; // mark the end of the token array
+
+    int count = 0;  // Initialize character count
+    // Read each character until EOF (End Of File)
+    while (fgetc(file) != EOF) {
+        count++;  // Increment count for each character read
+    }
+    // Print the total number of characters
+    printf("Number of characters in %s: %d\n", filename, count);
+    fclose(file);  // Close the file
 }
 
-// Function to count characters, words, or lines in a file
-void count(char *fn, char op) {
-    int fh, cc = 0, wc = 0, lc = 0;
-    char c;
-    fh = open(fn,"r"); // open the file in read-only mode
-    if (fh == -1) {
-        printf("File %s not found.\n", fn);
-        return;
+// Function to count words in a file
+void count_words(const char *filename) {
+    // Open the file for reading
+    FILE *file = fopen(filename, "r");
+    if (!file) {  // Check if the file opened successfully
+        perror("Could not open file");  // Print error message if it fails
+        return;  // Exit the function
     }
-    while (read(fh, &c, 1) > 0) {
-        if (c == ' ') wc++; // count words
-        else if (c == '\n') {
-            wc++; // count words
-            lc++; // count lines
+
+    int count = 0;  // Initialize word count
+    char word[100];  // Temporary buffer for reading words
+    // Read words from the file until EOF
+    while (fscanf(file, "%s", word) != EOF) {
+        count++;  // Increment count for each word read
+    }
+    // Print the total number of words
+    printf("Number of words in %s: %d\n", filename, count);
+    fclose(file);  // Close the file
+}
+
+// Function to count lines in a file
+void count_lines(const char *filename) {
+    // Open the file for reading
+    FILE *file = fopen(filename, "r");
+    if (!file) {  // Check if the file opened successfully
+        perror("Could not open file");  // Print error message if it fails
+        return;  // Exit the function
+    }
+
+    int count = 0;  // Initialize line count
+    char c;  // Variable to store each character
+    // Read each character until EOF
+    while ((c = fgetc(file)) != EOF) {
+        if (c == '\n') {  // Check for newline character
+            count++;  // Increment count for each line found
         }
-        cc++; // count characters
     }
-    close(fh);
-    switch (op) {
-        case 'c':
-            printf("No. of characters: %d\n", cc - 1);
-            break;
-        case 'w':
-            printf("No. of words: %d\n", wc);
-            break;
-        case 'l':
-            printf("No. of lines: %d\n", lc + 1);
-            break;
-    }
+    // Print the total number of lines
+    printf("Number of lines in %s: %d\n", filename, count);
+    fclose(file);  // Close the file
 }
 
 int main() {
-    char buff[80]; // input buffer
-    char *args[10]; // token array
-    int pid;
+    char input[1024];  // Buffer for user input
+
+    // Infinite loop to keep the shell running
     while (1) {
-        printf("myshell$ "); // display the command prompt
-        fflush(stdin);
-        fgets(buff, 80, stdin); // read input from the user
-        buff[strlen(buff) - 1] = '\0'; // remove the newline character
-        make_toks(buff, args); // tokenize the input
+        printf("myshell$ ");  // Display the shell prompt
+        // Read user input and exit on EOF
+        if (!fgets(input, sizeof(input), stdin)) break; 
+        input[strcspn(input, "\n")] = 0;  // Remove newline character from input
 
-        if (strcmp(args[0], "count") == 0) {
-            // handle the "count" command
-            count(args[2], args[1][0]);
-        } else {
-            // handle other commands by forking a new process
-            pid = fork();
-            if (pid > 0) {
-                wait(); // parent process waits for the child to finish
-            } else {
-                if (execvp(args[0], args) == -1) {
-                    printf("Bad command.\n");
-                }
-            }
+        // Tokenize the input into command and arguments
+        char *args[4];  // Array to hold command and arguments
+        char *token = strtok(input, " ");  // Get the first token
+        int i = 0;  // Index for args array
+        while (token && i < 3) {  // Loop to extract tokens
+            args[i++] = token;  // Store token in args array
+            token = strtok(NULL, " ");  // Get the next token
         }
-    }
-    return 0;
-}
+        args[i] = NULL;  // Null-terminate the args array
 
+        // Check for 'count' command
+        if (strcmp(args[0], "count") == 0 && i == 3) {
+            const char *command = args[1];  // Get the command (c, w, l)
+            const char *filename = args[2];  // Get the filename
+
+            // Execute the appropriate counting function based on command
+            if (strcmp(command, "c") == 0) {
+                count_characters(filename);  // Count characters
+            } else if (strcmp(command, "w") == 0) {
+                count_words(filename);  // Count words
+            } else if (strcmp(command, "l") == 0) {
+                count_lines(filename);  // Count lines 
+                } 
+              else {
+                printf("Invalid option for 'count' command.\n");
+            }
+            
+           }
+           else if(strcmp(args[0],"exit"))
+           {
+           printf("Exit");
+           break;
+           }
+    }
+    return 0;  // Exit the shell
+}

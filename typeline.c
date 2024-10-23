@@ -1,129 +1,68 @@
-// typline command program
-// Q3 (4 )
-// Write a C program to implement the shell which displays the command
-// prompt “myshell$”. It accepts the command, tokenize the command line and
-// execute it by creating the child process. Also implement the additional command
-// ‘typeline’ as
-// typeline +n filename :- To print first n lines in the file.
-// typeline -a filename :- To print all lines in the file.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <limits.h> // For INT_MAX
+#include <ctype.h>  // For isdigit
 
-// Define constants for maximum line length and maximum number of arguments
-#define MAX_LINE 1024
-#define MAX_ARGS 100
-
-// Function prototype for typeline_command
-void typeline_command(char *arg1, char *arg2);
-
-int main() {
-    // Initialize variables
-    char line[MAX_LINE];
-    char *command;
-
-    // Infinite loop to continuously prompt user for input
-    while (1) {
-        // Print the prompt
-        printf("myshell$ ");
-        fflush(stdout);
-
-        // Read input from user
-        if (fgets(line, sizeof(line), stdin) == NULL) {
-            perror("fgets");
-            exit(EXIT_FAILURE);
-        }
-
-        // Remove trailing newline character
-        line[strcspn(line, "\n")] = '\0';
-
-        // Tokenize the input
-        command = strtok(line, " ");
-
-        // Check for exit command
-        if (strcmp(command, "exit") == 0) {
-            break;
-        }
-
-        // Check for typeline command
-        if (strcmp(command, "typeline") == 0) {
-            // Get the arguments for the typeline command
-            char *arg1 = strtok(NULL, " ");
-            char *arg2 = strtok(NULL, " ");
-            if (!arg1 || !arg2) {
-                printf("Usage: typeline +n filename OR typeline -a filename\n");
-                continue;
-            }
-            typeline_command(arg1, arg2);
-        } else {
-            // Create a child process to execute the command
-            pid_t pid = fork();
-            if (pid == 0) {
-                // In child process
-                char *args[MAX_ARGS];
-                int i = 0;
-
-                // Tokenize the input into an array of arguments
-                args[i++] = command;
-                while ((args[i++] = strtok(NULL, " ")) != NULL);
-
-                args[i] = NULL; // execvp expects a NULL-terminated array
-
-                // Execute the command
-                execvp(command, args);
-                perror("execvp");
-                exit(EXIT_FAILURE);
-            } else if (pid > 0) {
-                // In parent process
-                wait(NULL);
-            } else {
-                perror("fork");
-                exit(EXIT_FAILURE);
-            }
-        }
+// Function to print the first n lines of a file
+void print_lines(char *filename, int n) {
+    FILE *file = fopen(filename, "r"); // Open the file for reading
+    if (!file) {
+        perror("Could not open file"); // Print error if file cannot be opened
+        return;
     }
-
-    return 0;
+    char line[1024]; // Buffer to hold each line
+    for (int i = 0; i < n && fgets(line, sizeof(line), file); i++) {
+        printf("%s", line); // Print each line
+    }
+    fclose(file); // Close the file
 }
 
-void typeline_command(char *arg1, char *arg2) {
-    // Initialize variables
-    FILE *file;
-    int lines_to_print = -1;
-    char line[MAX_LINE];
+int main() {
+    char input[1024]; // Buffer for user input
+    char *args[100];  // Array to hold command and arguments
 
-    // Check for +n or -a option
-    if (arg1[0] == '+') {
-        lines_to_print = atoi(arg1 + 1);
-    } else if (strcmp(arg1, "-a") == 0) {
-        lines_to_print = -1;
-    } else {
-        printf("Invalid option. Use +n or -a.\n");
-        return;
+    while (1) { // Infinite loop to keep the shell running
+        printf("myshell$ "); // Prompt user for input
+        fgets(input, sizeof(input), stdin);// Exit on EOF
+        input[strcspn(input, "\n")] = 0; // Remove newline character
+
+        // Tokenize the input into command and arguments
+        char *token = strtok(input, " ");
+        int i = 0;
+        while (token && i < 99) { // Limit to 99 arguments
+            args[i++] = token; // Store each token in args array
+            token = strtok(NULL, " "); // Get the next token
+        }
+        args[i] = NULL; // Null-terminate the argument list
+
+        // Handle custom command 'typeline'
+        if (strcmp(args[0], "typeline") == 0) {
+            if (strcmp(args[1], "+") == 0) { // Print first n lines
+                if (args[2] == NULL || !isdigit(args[2][0])) {
+                    fprintf(stderr, "Invalid number of lines specified.\n");
+                    continue;
+                }
+                int n = atoi(args[2]); // Convert argument to integer
+                print_lines(args[3], n); // Call function to print lines
+            } else if (strcmp(args[1], "-a") == 0) { // Print all lines
+                print_lines(args[2], INT_MAX); // Call function to print all lines
+            }
+            continue; // Skip to next iteration of the loop
+        }
+
+        // Fork a new process to execute other commands
+        pid_t pid = fork();
+        if (pid == 0) { // Child process
+            execvp(args[0], args); // Execute the command
+            perror("execvp failed"); // Print error if execvp fails
+            exit(EXIT_FAILURE); // Exit child process on failure
+        } else if (pid > 0) { // Parent process
+            wait(NULL); // Wait for child process to finish
+        }
     }
-
-    // Open the file
-    file = fopen(arg2, "r");
-    if (file==NULL
-    ) {
-        perror("fopen");
-        return;
-    }
-
-    // Initialize line count
-    int num_lines = 0;
-
-    // Read and print the file contents
-    while (fgets(line, sizeof(line), file)) {
-        if (lines_to_print == 0) break;
-        printf("%s", line);
-        if (lines_to_print > 0) lines_to_print--;
-        num_lines++;
-    }
-
-    // Close the file
-    fclose(file);
+    return 0; // Exit the shell
 }
